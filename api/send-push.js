@@ -1,5 +1,8 @@
 import webPush from 'web-push';
 import { getPool, sendJson } from './_db.js';
+import { MODES } from '../src/lenny-states.js';
+
+const VALID_DURATIONS = new Set([0, 3, 6, 10]);
 
 async function ensureTable() {
   await getPool().query(`
@@ -37,16 +40,20 @@ export default async function handler(request, response) {
       return sendJson(response, 405, { error: 'Method not allowed' });
     }
 
-    const { message } = parseBody(request);
+    const { durationSeconds, message, mode } = parseBody(request);
     const body = String(message || '').trim();
+    const duration = durationSeconds === 0 ? 0 : Number(durationSeconds || 6);
+    const pushMode = mode || 'awake';
     if (!body) return sendJson(response, 400, { error: 'Message required' });
     if (body.length > 180) return sendJson(response, 400, { error: 'Message too long' });
+    if (!VALID_DURATIONS.has(duration)) return sendJson(response, 400, { error: 'Invalid duration' });
+    if (!MODES.includes(pushMode)) return sendJson(response, 400, { error: 'Invalid mode' });
 
     configureWebPush();
     await ensureTable();
 
     const result = await getPool().query('SELECT endpoint, subscription FROM lenny_push_subscriptions');
-    const url = `/?message=${encodeURIComponent(body)}&push=${Date.now()}`;
+    const url = `/?message=${encodeURIComponent(body)}&mode=${encodeURIComponent(pushMode)}&duration=${duration}&push=${Date.now()}`;
     const payload = JSON.stringify({ body, url });
 
     let sent = 0;

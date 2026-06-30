@@ -1,337 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FACE, PAL, SPRITE } from './lenny-art.js';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { CANVAS_HEIGHT, CANVAS_WIDTH, drawScene } from './lenny-renderer.js';
+import { ADMIN_MODES, MODE_LABELS, MODES, moodFor, nextMode, scheduledMode, stateFor } from './lenny-states.js';
 
-const ART_COLS = 48;
-const ART_ROWS = 60;
-const PX = 8;
-const OX = 6;
-const OY = 4;
-const MODES = ['awake', 'sleep', 'breakfast', 'pool', 'cafe'];
-const ADMIN_MODES = ['auto', ...MODES];
 const RESUME_RELOAD_AFTER_MS = 5000;
 const NOTIFICATION_MESSAGE_DURATION_MS = 6000;
-const MODE_LABELS = {
-  auto: 'Auto horaire',
-  awake: 'Réveillé',
-  sleep: 'Dodo',
-  breakfast: 'Petit déjeuner',
-  pool: 'Piscine',
-  cafe: '6ème café',
+const DEFAULT_NOTIFICATION_DURATION_SECONDS = NOTIFICATION_MESSAGE_DURATION_MS / 1000;
+const NOTIFICATION_DURATION_OPTIONS = [3, 6, 10, 0];
+const PUSH_TEMPLATES = ['Je pense à toi', 'Regarde Lenny', 'Petit coucou'];
+const APP_VERSION = '1.0.0';
+const DEV_CONTROLS_ENABLED = import.meta.env.DEV;
+const NOTIFICATION_STORAGE_KEY = 'lenny_notification_override';
+const EMPTY_NOTIFICATION = { durationMs: NOTIFICATION_MESSAGE_DURATION_MS, expiresAt: 0, infinite: false, message: '', mode: '' };
+const DEFAULT_SETTINGS = {
+  messageOfDay: '',
+  mode: 'auto',
+  scheduledMode: '',
+  scheduledUntil: '',
 };
-
-function scheduledMode(date = new Date()) {
-  const minutes = date.getHours() * 60 + date.getMinutes();
-  if (minutes >= 60 && minutes < 570) return 'sleep';
-  if (minutes >= 570 && minutes < 720) return 'breakfast';
-  return 'awake';
-}
-
-function drawScene(canvas, mode, expr, ticks) {
-  const ctx = canvas.getContext('2d');
-  const breakfast = mode === 'breakfast';
-  const pool = mode === 'pool';
-  const cafe = mode === 'cafe';
-
-  function px(x, y, key) {
-    const color = PAL[key];
-    if (!color) return;
-    ctx.fillStyle = color;
-    ctx.fillRect(x * PX, y * PX, PX, PX);
-  }
-
-  function block(x, y, w, h, key) {
-    for (let yy = 0; yy < h; yy++) {
-      for (let xx = 0; xx < w; xx++) px(x + xx, y + yy, key);
-    }
-  }
-
-  function fpx(x, y, key) {
-    px(x + OX, y + OY, key);
-  }
-
-  function fblk(x, y, w, h, key) {
-    block(x + OX, y + OY, w, h, key);
-  }
-
-  function steamCol(baseX) {
-    for (let y = 44; y >= 39; y--) {
-      const off = Math.round(Math.sin((44 - y + ticks.breakfast * 0.6) * 1.1));
-      fpx(baseX + off, y, 'u');
-    }
-  }
-
-  function drawBreakfast() {
-    fblk(37, 45, 7, 1, 'b');
-    fpx(37, 46, 'b');
-    fblk(38, 46, 5, 1, 'c');
-    fpx(43, 46, 'b');
-    fblk(38, 47, 5, 5, 'm');
-    for (let y = 47; y <= 51; y++) {
-      fpx(37, y, 'b');
-      fpx(43, y, 'b');
-    }
-    fblk(37, 52, 7, 1, 'b');
-    fpx(44, 47, 'b');
-    fpx(45, 48, 'b');
-    fpx(45, 49, 'b');
-    fpx(44, 50, 'b');
-    fblk(36, 53, 9, 1, 'd');
-    fpx(36, 53, 'b');
-    fpx(44, 53, 'b');
-    fblk(37, 54, 7, 1, 'b');
-    steamCol(39);
-    steamCol(42);
-
-    fblk(4, 43, 5, 1, 'o');
-    fpx(3, 44, 'o');
-    fblk(4, 44, 5, 1, 'e');
-    fpx(9, 44, 'o');
-    fpx(3, 45, 'o');
-    fblk(4, 45, 5, 1, 'j');
-    fpx(9, 45, 'o');
-    fpx(3, 46, 'o');
-    fblk(4, 46, 5, 1, 'j');
-    fpx(9, 46, 'o');
-    for (let y = 47; y <= 50; y++) {
-      fpx(3, y, 'o');
-      fblk(4, y, 5, 1, 'e');
-      fpx(9, y, 'o');
-    }
-    fblk(4, 51, 5, 1, 'o');
-    fpx(1, 52, 'b');
-    fblk(2, 52, 8, 1, 'w');
-    fpx(10, 52, 'b');
-    fblk(2, 53, 8, 1, 'b');
-
-    fblk(10, 45, 4, 1, 'b');
-    fpx(10, 46, 'b');
-    fblk(11, 46, 2, 1, 'r');
-    fpx(13, 46, 'b');
-    fpx(10, 47, 'b');
-    fblk(11, 47, 2, 1, 'r');
-    fpx(13, 47, 'b');
-    fpx(10, 48, 'b');
-    fblk(11, 48, 2, 1, 'w');
-    fpx(13, 48, 'b');
-    for (let y = 49; y <= 52; y++) {
-      fpx(10, y, 'b');
-      fblk(11, y, 2, 1, 'j');
-      fpx(13, y, 'b');
-    }
-    fblk(11, 50, 2, 1, 'w');
-    fblk(10, 53, 4, 1, 'b');
-
-    fpx(2, 55, 'o');
-    fpx(6, 54, 'e');
-    fpx(9, 55, 'o');
-    fpx(36, 55, 'o');
-    fpx(41, 56, 'e');
-    fpx(45, 55, 'o');
-  }
-
-  function drawPool() {
-    fblk(3, -3, 3, 1, 'y');
-    fblk(2, -2, 5, 3, 'y');
-    fblk(3, 1, 3, 1, 'y');
-    fpx(0, -1, 'e');
-    fpx(8, -1, 'e');
-    fpx(4, -4, 'e');
-    fpx(4, 2, 'e');
-
-    for (let x = -OX; x <= ART_COLS - 1 + OX; x++) {
-      const surf = 41 + Math.round(Math.sin((x + ticks.pool * 0.7) * 0.5));
-      fpx(x, surf, 'n');
-      for (let y = surf + 1; y <= ART_ROWS + 7; y++) fpx(x, y, 'i');
-    }
-    for (let x = -OX; x <= ART_COLS - 1 + OX; x += 4) {
-      const wy = 47 + Math.round(Math.sin((x + ticks.pool) * 0.8));
-      fpx(x, wy, 'n');
-    }
-
-    // Grande bouée autour du buste : anneau rouge/blanc posé sous les bras.
-    fblk(13, 39, 4, 1, 'b');
-    fpx(12, 40, 'b');
-    fblk(13, 40, 2, 1, 'j');
-    fblk(15, 40, 2, 1, 'w');
-    fpx(17, 40, 'b');
-    fpx(12, 41, 'b');
-    fblk(13, 41, 2, 1, 'j');
-    fblk(15, 41, 2, 1, 'w');
-    fpx(17, 41, 'b');
-    fblk(13, 42, 4, 1, 'b');
-
-    fblk(31, 39, 4, 1, 'b');
-    fpx(30, 40, 'b');
-    fblk(31, 40, 2, 1, 'w');
-    fblk(33, 40, 2, 1, 'j');
-    fpx(35, 40, 'b');
-    fpx(30, 41, 'b');
-    fblk(31, 41, 2, 1, 'w');
-    fblk(33, 41, 2, 1, 'j');
-    fpx(35, 41, 'b');
-    fblk(31, 42, 4, 1, 'b');
-
-    fblk(18, 42, 4, 1, 'j');
-    fblk(22, 42, 4, 1, 'w');
-    fblk(26, 42, 6, 1, 'j');
-
-    fpx(21, 16, 'k');
-    fpx(22, 16, 'k');
-    fpx(20, 17, 'k');
-    fblk(21, 17, 2, 1, 'n');
-    fpx(23, 17, 'k');
-    fpx(20, 18, 'k');
-    fblk(21, 18, 2, 1, 'n');
-    fpx(23, 18, 'k');
-    fpx(21, 19, 'k');
-    fpx(22, 19, 'k');
-    fpx(26, 16, 'k');
-    fpx(27, 16, 'k');
-    fpx(25, 17, 'k');
-    fblk(26, 17, 2, 1, 'n');
-    fpx(28, 17, 'k');
-    fpx(25, 18, 'k');
-    fblk(26, 18, 2, 1, 'n');
-    fpx(28, 18, 'k');
-    fpx(26, 19, 'k');
-    fpx(27, 19, 'k');
-    fpx(24, 17, 'k');
-    fpx(19, 17, 'k');
-    fpx(29, 17, 'k');
-    fpx(21, 17, 'w');
-    fpx(26, 17, 'w');
-    fpx(22, 18, 'k');
-    fpx(27, 18, 'k');
-
-    fblk(34, 12, 2, 9, 'j');
-    fpx(34, 11, 'k');
-    fpx(35, 11, 'k');
-    fpx(33, 20, 'j');
-    fpx(32, 21, 'j');
-  }
-
-  function coffeeSteam(baseX, topY, bottomY) {
-    for (let y = bottomY; y >= topY; y--) {
-      const off = Math.round(Math.sin((bottomY - y + ticks.cafe * 0.6) * 1.1));
-      fpx(baseX + off, y, 'u');
-    }
-  }
-
-  function drawCoffeeCup(x, y, full) {
-    fpx(x, y, 'b');
-    fblk(x + 1, y, 2, 1, full ? 'c' : 'd');
-    fpx(x + 3, y, 'b');
-    if (full) fpx(x + 1, y, 'e');
-    fpx(x, y + 1, 'b');
-    fblk(x + 1, y + 1, 2, 1, 'w');
-    fblk(x + 3, y + 1, 2, 1, 'b');
-    fpx(x, y + 2, 'b');
-    fblk(x + 1, y + 2, 2, 1, 'w');
-    fblk(x + 3, y + 2, 2, 1, 'b');
-    fpx(x - 1, y + 3, 'b');
-    fblk(x, y + 3, 4, 1, 'd');
-    fpx(x + 4, y + 3, 'b');
-  }
-
-  function drawCoffee() {
-    // Comptoir en bois où s'accumulent les tasses vidées.
-    fblk(0, 57, 48, 1, 'o');
-    fblk(0, 58, 48, 2, 'c');
-
-    const slots = [4, 11, 18, 25, 32, 39];
-    slots.forEach((cx, idx) => {
-      drawCoffeeCup(cx, 53, idx === slots.length - 1);
-    });
-
-    // Vapeur du 6ème café, encore brûlant.
-    coffeeSteam(40, 47, 52);
-    coffeeSteam(41, 48, 52);
-
-    // Yeux en spirale : Lenny a la tête qui tourne.
-    const spiral = ['.###.', '#....', '#.##.', '#..#.', '.###.'];
-    const drawSpiral = (sx, sy, mirror) => {
-      fblk(sx, sy, 5, 5, 'w');
-      for (let r = 0; r < 5; r++) {
-        for (let c = 0; c < 5; c++) {
-          if (spiral[r][c] !== '#') continue;
-          fpx(sx + (mirror ? 4 - c : c), sy + r, 'k');
-        }
-      }
-    };
-    drawSpiral(19, 14, false);
-    drawSpiral(25, 14, true);
-  }
-
-  function drawFlower(fx, fy, col) {
-    fpx(fx, fy + 2, 'q');
-    fpx(fx, fy + 3, 'q');
-    fpx(fx, fy - 1, col);
-    fpx(fx - 1, fy, col);
-    fpx(fx + 1, fy, col);
-    fpx(fx, fy + 1, col);
-    fpx(fx, fy, 'e');
-  }
-
-  function drawGarden() {
-    const left = -OX;
-    const right = ART_COLS - 1 + OX;
-
-    // Soleil dans le coin haut droit.
-    fblk(44, 4, 3, 3, 'e');
-    fpx(45, 2, 'y');
-    fpx(45, 8, 'y');
-    fpx(42, 5, 'y');
-    fpx(48, 5, 'y');
-
-    // Pelouse avec un liseré plus foncé en haut.
-    for (let x = left; x <= right; x++) {
-      const top = 46 + [0, -1, 0, 1, 0, -1][((x % 6) + 6) % 6];
-      fpx(x, top, 'q');
-      for (let y = top + 1; y <= 56; y++) fpx(x, y, 'g');
-    }
-
-    // Massifs de buissons de part et d'autre de Lenny.
-    const bush = (bx) => {
-      fblk(bx, 49, 9, 5, 'q');
-      fblk(bx + 1, 47, 7, 2, 'q');
-      fblk(bx + 3, 46, 3, 1, 'q');
-      fpx(bx + 2, 48, 'g');
-      fpx(bx + 6, 50, 'g');
-      fpx(bx + 4, 47, 'g');
-    };
-    bush(-5);
-    bush(37);
-
-    // Quelques fleurs sur la pelouse.
-    drawFlower(2, 51, 'r');
-    drawFlower(7, 52, 'y');
-    drawFlower(40, 51, 'p');
-    drawFlower(45, 52, 'r');
-  }
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (cafe) drawGarden();
-  for (let y = 0; y < ART_ROWS; y++) {
-    const row = SPRITE[y];
-    for (let x = 0; x < ART_COLS; x++) fpx(x, y, row[x]);
-  }
-  if (breakfast) drawBreakfast();
-  if (pool) drawPool();
-  if (cafe) drawCoffee();
-  if (expr && FACE[expr]) {
-    for (const [x, y, key] of FACE[expr]) fpx(x, y, key);
-  }
-}
-
-function moodFor(mode) {
-  if (mode === 'sleep') return 'Lenny dort encore un peu.';
-  if (mode === 'breakfast') {
-    return 'Lenny prend son petit déjeuner : tartines, confiture de fraise et double expresso.';
-  }
-  if (mode === 'pool') return 'Lenny se prélasse à la piscine : masque, tuba et eau fraîche.';
-  if (mode === 'cafe') return 'Lenny en est déjà à son 6ème café : impossible de l’arrêter.';
-  return '';
-}
 
 async function readJsonResponse(response, fallbackMessage) {
   const contentType = response.headers.get('content-type') || '';
@@ -341,18 +26,50 @@ async function readJsonResponse(response, fallbackMessage) {
   return response.json();
 }
 
-async function fetchDefaultMode() {
-  const response = await fetch('/api/lenny-state');
-  if (!response.ok) return 'auto';
-  const data = await readJsonResponse(response, 'API locale indisponible, mode auto utilisé.');
-  return ADMIN_MODES.includes(data.mode) ? data.mode : 'auto';
+function normalizeSettings(data = {}) {
+  return {
+    messageOfDay: String(data.messageOfDay || ''),
+    mode: ADMIN_MODES.includes(data.mode) ? data.mode : 'auto',
+    scheduledMode: ADMIN_MODES.includes(data.scheduledMode) ? data.scheduledMode : '',
+    scheduledUntil: data.scheduledUntil && !Number.isNaN(new Date(data.scheduledUntil).getTime()) ? data.scheduledUntil : '',
+  };
 }
 
-async function saveDefaultMode(mode) {
+function modeFromSettings(settings, date = new Date()) {
+  if (settings.scheduledMode && settings.scheduledUntil && new Date(settings.scheduledUntil).getTime() > date.getTime()) {
+    return settings.scheduledMode;
+  }
+  return settings.mode === 'auto' ? scheduledMode(date) : settings.mode;
+}
+
+function scheduleUntilFromTime(timeValue) {
+  if (!timeValue) return '';
+  const [hours, minutes] = timeValue.split(':').map(Number);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return '';
+
+  const until = new Date();
+  until.setHours(hours, minutes, 0, 0);
+  if (until.getTime() <= Date.now()) until.setDate(until.getDate() + 1);
+  return until.toISOString();
+}
+
+function formatSchedule(isoValue) {
+  if (!isoValue) return '';
+  return new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(new Date(isoValue));
+}
+
+async function fetchSettings() {
+  const response = await fetch('/api/lenny-state');
+  if (!response.ok) return DEFAULT_SETTINGS;
+  const data = await readJsonResponse(response, 'API locale indisponible, mode auto utilisé.');
+  return normalizeSettings(data);
+}
+
+async function saveSettings(partialSettings) {
   const response = await fetch('/api/lenny-state', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode }),
+    body: JSON.stringify(partialSettings),
   });
 
   if (!response.ok) {
@@ -362,14 +79,66 @@ async function saveDefaultMode(mode) {
     throw new Error(data.error || 'Impossible de sauvegarder.');
   }
 
-  return readJsonResponse(response, 'API indisponible en local. Utilise la version en ligne ou vercel dev.');
+  const data = await readJsonResponse(response, 'API indisponible en local. Utilise la version en ligne ou vercel dev.');
+  return normalizeSettings(data);
 }
 
-async function sendPushMessage(message) {
+function formatDuration(seconds) {
+  return seconds === 0 ? 'Infini' : `${seconds}s`;
+}
+
+function clearStoredNotification() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(NOTIFICATION_STORAGE_KEY);
+}
+
+function normalizeNotification(value = {}) {
+  const message = String(value.message || '').trim();
+  const mode = MODES.includes(value.mode) ? value.mode : '';
+  const infinite = Boolean(value.infinite);
+  const expiresAt = Number(value.expiresAt || 0);
+  const durationMs = Number(value.durationMs || NOTIFICATION_MESSAGE_DURATION_MS);
+
+  if (!message && !mode) return EMPTY_NOTIFICATION;
+  if (!infinite && (!expiresAt || expiresAt <= Date.now())) {
+    clearStoredNotification();
+    return EMPTY_NOTIFICATION;
+  }
+
+  return {
+    durationMs: infinite ? 0 : Math.max(0, expiresAt - Date.now()) || durationMs,
+    expiresAt,
+    infinite,
+    message,
+    mode,
+  };
+}
+
+function storeNotification(notification) {
+  if (typeof window === 'undefined') return;
+  const normalized = normalizeNotification(notification);
+  if (!normalized.message && !normalized.mode) {
+    clearStoredNotification();
+    return;
+  }
+  window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(normalized));
+}
+
+function readStoredNotification() {
+  if (typeof window === 'undefined') return EMPTY_NOTIFICATION;
+  try {
+    return normalizeNotification(JSON.parse(window.localStorage.getItem(NOTIFICATION_STORAGE_KEY) || '{}'));
+  } catch {
+    clearStoredNotification();
+    return EMPTY_NOTIFICATION;
+  }
+}
+
+async function sendPushMessage(message, durationSeconds, mode) {
   const response = await fetch('/api/send-push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ durationSeconds, message, mode }),
   });
 
   const data = await readJsonResponse(response, 'API indisponible en local. Utilise la version en ligne ou vercel dev.').catch(
@@ -391,7 +160,7 @@ async function registerPushSubscription() {
     throw new Error('Notifications non supportées sur cet appareil.');
   }
 
-  const registration = await navigator.serviceWorker.register('/sw.js?v=3');
+  const registration = await navigator.serviceWorker.register('/sw.js?v=4');
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') throw new Error('Notifications refusées.');
 
@@ -420,25 +189,49 @@ async function registerPushSubscription() {
   return subscription;
 }
 
-function notificationMessageFromUrl() {
-  if (typeof window === 'undefined') return '';
-  return new URLSearchParams(window.location.search).get('message')?.trim() || '';
+function notificationFromUrl() {
+  if (typeof window === 'undefined') return EMPTY_NOTIFICATION;
+  const params = new URLSearchParams(window.location.search);
+  const hasNotificationParams = params.has('message') || params.has('mode') || params.has('duration');
+  if (!hasNotificationParams) return readStoredNotification();
+
+  const rawDuration = params.get('duration');
+  const durationSeconds = rawDuration === '0' ? 0 : Number(rawDuration || DEFAULT_NOTIFICATION_DURATION_SECONDS);
+  const safeDurationSeconds = NOTIFICATION_DURATION_OPTIONS.includes(durationSeconds)
+    ? durationSeconds
+    : DEFAULT_NOTIFICATION_DURATION_SECONDS;
+  const mode = MODES.includes(params.get('mode')) ? params.get('mode') : '';
+  const notification = normalizeNotification({
+    durationMs: safeDurationSeconds === 0 ? 0 : safeDurationSeconds * 1000,
+    expiresAt: safeDurationSeconds === 0 ? 0 : Date.now() + safeDurationSeconds * 1000,
+    infinite: safeDurationSeconds === 0,
+    message: params.get('message')?.trim() || '',
+    mode,
+  });
+  storeNotification(notification);
+  return notification;
 }
 
 function AdminPage() {
-  const [mode, setMode] = useState('auto');
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [status, setStatus] = useState('Chargement...');
   const [saving, setSaving] = useState(false);
   const [pushMessage, setPushMessage] = useState('');
+  const [pushDurationSeconds, setPushDurationSeconds] = useState(DEFAULT_NOTIFICATION_DURATION_SECONDS);
+  const [pushMode, setPushMode] = useState('awake');
   const [pushStatus, setPushStatus] = useState('');
   const [sendingPush, setSendingPush] = useState(false);
+  const [scheduledMode, setScheduledMode] = useState('amour');
+  const [scheduledTime, setScheduledTime] = useState('');
+  const mode = settings.mode;
 
   useEffect(() => {
     let cancelled = false;
-    fetchDefaultMode()
-      .then((nextMode) => {
+    fetchSettings()
+      .then((nextSettings) => {
         if (cancelled) return;
-        setMode(nextMode);
+        setSettings(nextSettings);
+        if (nextSettings.scheduledMode) setScheduledMode(nextSettings.scheduledMode);
         setStatus('Prêt.');
       })
       .catch((error) => {
@@ -450,13 +243,13 @@ function AdminPage() {
     };
   }, []);
 
-  async function handleSave(nextMode) {
+  async function persistSettings(partialSettings, successMessage) {
     setSaving(true);
     setStatus('Sauvegarde...');
     try {
-      const result = await saveDefaultMode(nextMode);
-      setMode(result.mode);
-      setStatus(`État par défaut : ${MODE_LABELS[result.mode]}.`);
+      const nextSettings = await saveSettings(partialSettings);
+      setSettings(nextSettings);
+      setStatus(successMessage(nextSettings));
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -464,12 +257,43 @@ function AdminPage() {
     }
   }
 
+  function handleSave(nextMode) {
+    persistSettings({ mode: nextMode }, (nextSettings) => `État par défaut : ${MODE_LABELS[nextSettings.mode]}.`);
+  }
+
+  function handleMessageOfDayChange(event) {
+    setSettings((current) => ({ ...current, messageOfDay: event.target.value }));
+  }
+
+  function handleSaveMessageOfDay() {
+    persistSettings(
+      { messageOfDay: settings.messageOfDay },
+      (nextSettings) => (nextSettings.messageOfDay ? 'Message du jour sauvegardé.' : 'Message du jour retiré.')
+    );
+  }
+
+  function handleSchedule() {
+    const scheduledUntil = scheduleUntilFromTime(scheduledTime);
+    if (!scheduledUntil) {
+      setStatus('Choisis une heure de fin.');
+      return;
+    }
+    persistSettings(
+      { scheduledMode, scheduledUntil },
+      () => `${MODE_LABELS[scheduledMode]} programmé jusqu’à ${formatSchedule(scheduledUntil)}.`
+    );
+  }
+
+  function handleClearSchedule() {
+    persistSettings({ scheduledMode: '', scheduledUntil: '' }, () => 'Programmation retirée.');
+  }
+
   async function handleSendPush(event) {
     event.preventDefault();
     setSendingPush(true);
     setPushStatus('Envoi...');
     try {
-      const result = await sendPushMessage(pushMessage);
+      const result = await sendPushMessage(pushMessage, pushDurationSeconds, pushMode);
       setPushStatus(`Notification envoyée à ${result.sent}/${result.total} appareil(s).`);
     } catch (error) {
       setPushStatus(error.message);
@@ -485,18 +309,80 @@ function AdminPage() {
         <h1>État par défaut</h1>
         <p className="admin-copy">Choisis ce que tout le monde verra en ouvrant Lenny.</p>
 
-        <div className="admin-actions">
-          {ADMIN_MODES.map((item) => (
-            <button
-              className={item === mode ? 'selected' : ''}
-              disabled={saving}
-              key={item}
-              onClick={() => handleSave(item)}
-              type="button"
-            >
-              {MODE_LABELS[item]}
+        <button
+          className={`admin-auto-button ${mode === 'auto' ? 'selected' : ''}`}
+          disabled={saving}
+          onClick={() => handleSave('auto')}
+          type="button"
+        >
+          Retour auto
+        </button>
+
+        <label className="admin-field">
+          État
+          <select disabled={saving} value={mode} onChange={(event) => handleSave(event.target.value)}>
+            {ADMIN_MODES.map((item) => (
+              <option key={item} value={item}>
+                {MODE_LABELS[item]}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="admin-field">
+          Message du jour
+          <textarea
+            maxLength="140"
+            onChange={handleMessageOfDayChange}
+            placeholder="Message visible sans notification"
+            rows="2"
+            value={settings.messageOfDay}
+          />
+        </label>
+        <button className="admin-secondary-button" disabled={saving} onClick={handleSaveMessageOfDay} type="button">
+          Sauvegarder le message du jour
+        </button>
+
+        <div className="admin-schedule">
+          <p>Programmer temporairement</p>
+          <select value={scheduledMode} onChange={(event) => setScheduledMode(event.target.value)}>
+            {MODES.map((item) => (
+              <option key={item} value={item}>
+                {MODE_LABELS[item]}
+              </option>
+            ))}
+          </select>
+          <input type="time" value={scheduledTime} onChange={(event) => setScheduledTime(event.target.value)} />
+          <button disabled={saving} onClick={handleSchedule} type="button">
+            Programmer
+          </button>
+          {settings.scheduledMode && settings.scheduledUntil ? (
+            <button disabled={saving} onClick={handleClearSchedule} type="button">
+              Retirer la programmation
             </button>
-          ))}
+          ) : null}
+          {settings.scheduledMode && settings.scheduledUntil ? (
+            <p className="admin-status">
+              Actif : {MODE_LABELS[settings.scheduledMode]} jusqu’à {formatSchedule(settings.scheduledUntil)}
+            </p>
+          ) : null}
+        </div>
+
+        <details className="admin-gallery">
+          <summary>Galerie des états</summary>
+          <div className="admin-gallery-grid">
+            {MODES.map((item) => (
+              <span key={item}>{MODE_LABELS[item]}</span>
+            ))}
+          </div>
+        </details>
+
+        <div className="admin-preview">
+          <p>Prévisualisation</p>
+          <span>État par défaut : {MODE_LABELS[mode]}</span>
+          <span>Au clic notif : {MODE_LABELS[pushMode]}</span>
+          <span>Message : {pushMessage || 'Aucun message de notif'}</span>
+          <span>Durée : {formatDuration(pushDurationSeconds)}</span>
         </div>
 
         <p className="admin-status" aria-live="polite">
@@ -514,6 +400,38 @@ function AdminPage() {
               value={pushMessage}
             />
           </label>
+          <div className="admin-template-list" aria-label="Templates de notification">
+            {PUSH_TEMPLATES.map((template) => (
+              <button key={template} type="button" onClick={() => setPushMessage(template)}>
+                {template}
+              </button>
+            ))}
+          </div>
+          <label className="admin-field">
+            État au clic
+            <select value={pushMode} onChange={(event) => setPushMode(event.target.value)}>
+              {MODES.map((item) => (
+                <option key={item} value={item}>
+                  {MODE_LABELS[item]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="admin-duration-group" aria-label="Durée du message">
+            <span>Durée affichage état/message</span>
+            <div className="admin-duration-options">
+              {NOTIFICATION_DURATION_OPTIONS.map((duration) => (
+                <button
+                  className={duration === pushDurationSeconds ? 'selected' : ''}
+                  key={duration}
+                  type="button"
+                  onClick={() => setPushDurationSeconds(duration)}
+                >
+                  {formatDuration(duration)}
+                </button>
+              ))}
+            </div>
+          </div>
           <button disabled={sendingPush || !pushMessage.trim()} type="submit">
             Envoyer la notification
           </button>
@@ -521,6 +439,8 @@ function AdminPage() {
             {pushStatus}
           </p>
         </form>
+
+        <p className="admin-version">App v{APP_VERSION} · SW v4</p>
 
         <a className="admin-link" href="/">
           Voir Lenny
@@ -531,33 +451,73 @@ function AdminPage() {
 }
 
 function LennyApp() {
+  const audioRef = useRef(null);
   const canvasRef = useRef(null);
   const stageRef = useRef(null);
-  const touchedRef = useRef(false);
-  const tickRef = useRef({ breakfast: 0, pool: 0, cafe: 0 });
+  const tickRef = useRef(Object.fromEntries(MODES.map((item) => [item, 0])));
   const lastActiveAtRef = useRef(Date.now());
+  const longPressRef = useRef(false);
+  const pressTimerRef = useRef(null);
+  const reactionExprTimerRef = useRef(null);
+  const reactionTimerRef = useRef(null);
   const resumeReloadedRef = useRef(false);
   const [manualMode, setManualMode] = useState(null);
-  const [defaultMode, setDefaultMode] = useState('auto');
+  const [reactionExpr, setReactionExpr] = useState('');
+  const [reactionMessage, setReactionMessage] = useState('');
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [settingsReady, setSettingsReady] = useState(false);
   const [pushSupported, setPushSupported] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushStatus, setPushStatus] = useState('');
+  const [musicMuted, setMusicMuted] = useState(true);
   const [clockTick, setClockTick] = useState(() => Date.now());
   const [resumeTick, setResumeTick] = useState(0);
-  const [notificationMessage, setNotificationMessage] = useState(() => notificationMessageFromUrl());
+  const [notification, setNotification] = useState(() => notificationFromUrl());
+  const notificationMessage = notification.message;
+  const notificationActive = Boolean(notificationMessage || notification.mode);
+  const visualReady = notificationActive || settingsReady;
   const mode = useMemo(() => {
-    const remoteMode = defaultMode === 'auto' ? scheduledMode(new Date(clockTick)) : defaultMode;
-    if (notificationMessage) return 'awake';
+    const remoteMode = modeFromSettings(settings, new Date(clockTick));
+    if (notificationActive) return notification.mode || 'awake';
     return manualMode || remoteMode;
-  }, [clockTick, defaultMode, manualMode, notificationMessage]);
-  const asleep = mode === 'sleep';
+  }, [clockTick, manualMode, notification.mode, notificationActive, settings]);
+  const activeState = useMemo(() => stateFor(mode), [mode]);
+  const asleep = visualReady && activeState.sleepEffect;
+  const isMusicListen = mode === 'musicListen';
+  const isMinecraft = mode === 'minecraft';
+  const audioSrc = isMusicListen ? '/Maribou%20State%20-%20Eko%E2%80%99s%20(Official%20Audio).mp3' : '/sable%20chaud.mp3';
+
+  function showReaction(message, sparkText = '♥', expr = 'blink') {
+    setReactionMessage(message);
+    setReactionExpr(expr);
+    window.clearTimeout(reactionExprTimerRef.current);
+    window.clearTimeout(reactionTimerRef.current);
+    reactionExprTimerRef.current = window.setTimeout(() => setReactionExpr(''), 520);
+    reactionTimerRef.current = window.setTimeout(() => setReactionMessage(''), 2200);
+
+    if (!stageRef.current) return;
+    const el = document.createElement('span');
+    el.className = 'spark reaction-spark';
+    el.textContent = sparkText;
+    el.style.left = `${stageRef.current.clientWidth * 0.68}px`;
+    el.style.top = `${stageRef.current.clientHeight * 0.2}px`;
+    stageRef.current.appendChild(el);
+    window.setTimeout(() => el.remove(), 1400);
+  }
+
+  const clearNotificationOverride = useCallback(() => {
+    clearStoredNotification();
+    setNotification(EMPTY_NOTIFICATION);
+  }, []);
 
   const refreshState = useCallback(async () => {
     setClockTick(Date.now());
     try {
-      setDefaultMode(await fetchDefaultMode());
+      setSettings(await fetchSettings());
     } catch {
-      setDefaultMode('auto');
+      setSettings(DEFAULT_SETTINGS);
+    } finally {
+      setSettingsReady(true);
     }
   }, []);
 
@@ -565,6 +525,29 @@ function LennyApp() {
     const id = window.setInterval(() => setClockTick(Date.now()), 60000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    window.screen?.orientation?.lock?.('portrait').catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = '/music.PNG';
+
+    const minecraftImage = new Image();
+    minecraftImage.decoding = 'async';
+    minecraftImage.src = '/lenny-minecraft.png';
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (notificationActive || Math.random() > 0.25) return;
+      showReaction('Lenny fait un petit coucou.', '*');
+    }, 42000);
+
+    return () => window.clearInterval(id);
+  }, [notificationActive]);
 
   useEffect(() => {
     const markActive = () => {
@@ -613,7 +596,7 @@ function LennyApp() {
     setPushSupported(supported);
     if (!supported) return;
 
-    navigator.serviceWorker.register('/sw.js?v=3').catch(() => {
+    navigator.serviceWorker.register('/sw.js?v=7').catch(() => {
       setPushStatus('Notifications indisponibles.');
     });
 
@@ -623,24 +606,28 @@ function LennyApp() {
   }, []);
 
   useEffect(() => {
-    if (!notificationMessage) return undefined;
+    if (!notificationActive) return undefined;
 
     setManualMode(null);
     refreshState();
 
     const url = new URL(window.location.href);
     url.searchParams.delete('message');
+    url.searchParams.delete('mode');
     url.searchParams.delete('push');
+    url.searchParams.delete('duration');
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
 
+    if (notification.infinite) return undefined;
+
     const timeout = window.setTimeout(() => {
-      setNotificationMessage('');
+      clearNotificationOverride();
       refreshState();
       setResumeTick((tick) => tick + 1);
-    }, NOTIFICATION_MESSAGE_DURATION_MS);
+    }, notification.durationMs);
 
     return () => window.clearTimeout(timeout);
-  }, [notificationMessage, refreshState]);
+  }, [clearNotificationOverride, notification.durationMs, notification.infinite, notificationActive, refreshState]);
 
   useEffect(() => {
     refreshState();
@@ -663,17 +650,17 @@ function LennyApp() {
     };
   }, [refreshState]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return undefined;
+    if (!canvas || !visualReady) return undefined;
 
     const timeouts = new Set();
     const draw = (expr = null) => drawScene(canvas, mode, expr, tickRef.current);
 
-    draw(mode === 'sleep' ? 'sleep' : null);
+    draw(reactionExpr || (activeState.sleepEffect ? 'sleep' : null));
 
     const blinkId = window.setInterval(() => {
-      if (mode !== 'sleep' && mode !== 'pool' && mode !== 'cafe' && Math.random() < 0.5) {
+      if (activeState.allowBlink && Math.random() < 0.5) {
         draw('blink');
         const timeout = window.setTimeout(() => draw(), 160);
         timeouts.add(timeout);
@@ -681,7 +668,7 @@ function LennyApp() {
     }, 4200);
 
     const sleepId = window.setInterval(() => {
-      if (mode !== 'sleep' || Math.random() >= 0.6 || !stageRef.current) return;
+      if (!activeState.sleepEffect || Math.random() >= 0.6 || !stageRef.current) return;
       const el = document.createElement('span');
       el.className = 'spark';
       el.textContent = 'z';
@@ -692,56 +679,116 @@ function LennyApp() {
       timeouts.add(timeout);
     }, 2600);
 
-    const breakfastId = window.setInterval(() => {
-      if (mode !== 'breakfast') return;
-      tickRef.current.breakfast += 1;
-      draw();
-    }, 420);
-
-    const poolId = window.setInterval(() => {
-      if (mode !== 'pool') return;
-      tickRef.current.pool += 1;
-      draw();
-    }, 360);
-
-    const cafeId = window.setInterval(() => {
-      if (mode !== 'cafe') return;
-      tickRef.current.cafe += 1;
-      draw();
-    }, 420);
+    const animationId = activeState.animated && activeState.tickMs
+      ? window.setInterval(() => {
+          tickRef.current[mode] = (tickRef.current[mode] || 0) + 1;
+          draw();
+        }, activeState.tickMs)
+      : null;
 
     return () => {
       window.clearInterval(blinkId);
       window.clearInterval(sleepId);
-      window.clearInterval(breakfastId);
-      window.clearInterval(poolId);
-      window.clearInterval(cafeId);
+      if (animationId) window.clearInterval(animationId);
       for (const timeout of timeouts) window.clearTimeout(timeout);
     };
-  }, [mode, resumeTick]);
+  }, [activeState, mode, reactionExpr, resumeTick, visualReady]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.muted = musicMuted;
+  }, [musicMuted]);
 
   function cycleMode() {
     setManualMode((currentManualMode) => {
-      const remoteMode = defaultMode === 'auto' ? scheduledMode() : defaultMode;
+      const remoteMode = modeFromSettings(settings);
       const currentMode = currentManualMode || remoteMode;
-      return MODES[(MODES.indexOf(currentMode) + 1) % MODES.length];
+      return nextMode(currentMode);
     });
   }
 
-  function handleTouchStart(event) {
+  function handlePressStart(event) {
     event.preventDefault();
-    if (notificationMessage) return;
-    touchedRef.current = true;
-    cycleMode();
+    if (!visualReady) return;
+    longPressRef.current = false;
+    window.clearTimeout(pressTimerRef.current);
+    pressTimerRef.current = window.setTimeout(() => {
+      longPressRef.current = true;
+      showReaction('Lenny pense à toi.', '♥');
+    }, 520);
   }
 
-  function handleClick() {
-    if (notificationMessage) return;
-    if (touchedRef.current) {
-      touchedRef.current = false;
+  function handlePressEnd(event) {
+    event.preventDefault();
+    if (!visualReady) return;
+    window.clearTimeout(pressTimerRef.current);
+    if (longPressRef.current) return;
+    if (notificationActive) {
+      const nextManualMode = nextMode(mode);
+      clearNotificationOverride();
+      setManualMode(nextManualMode);
       return;
     }
     cycleMode();
+  }
+
+  function handlePressCancel() {
+    window.clearTimeout(pressTimerRef.current);
+  }
+
+  function handleDevModeChange(event) {
+    clearNotificationOverride();
+    setManualMode(event.target.value);
+  }
+
+  async function handleMusicKeyboardClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (!musicMuted) {
+      audio.muted = true;
+      setMusicMuted(true);
+      setReactionMessage('');
+      return;
+    }
+
+    audio.muted = false;
+    setMusicMuted(false);
+    try {
+      await audio.play();
+      showReaction('Banger lancé.', '♪');
+    } catch {
+      setMusicMuted(true);
+      audio.muted = true;
+      showReaction('Clique encore pour le son.', '♪');
+    }
+  }
+
+  async function handleListeningAudioClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (!musicMuted) {
+      audio.muted = true;
+      setMusicMuted(true);
+      return;
+    }
+
+    audio.muted = false;
+    setMusicMuted(false);
+    try {
+      await audio.play();
+    } catch {
+      setMusicMuted(true);
+      audio.muted = true;
+    }
   }
 
   async function handleEnablePush() {
@@ -756,23 +803,108 @@ function LennyApp() {
   }
 
   return (
-    <main className={`app ${asleep ? 'asleep' : ''}`}>
+    <main
+      className={`app ${asleep ? 'asleep' : ''} ${isMusicListen ? 'is-image-scene' : ''} ${
+        isMusicListen ? 'is-listening-scene' : ''
+      } ${isMinecraft ? 'is-minecraft-scene' : ''}`}
+    >
       <section className="lenny-screen">
-        <div className="stage" ref={stageRef}>
-          <canvas
-            ref={canvasRef}
-            className="lenny breathe"
-            width="480"
-            height="576"
-            role="img"
-            aria-label={`Lenny en mode ${mode}`}
-            onClick={handleClick}
-            onTouchStart={handleTouchStart}
-          />
+        <audio ref={audioRef} key={audioSrc} src={audioSrc} loop autoPlay muted={musicMuted} preload="auto" />
+        <div className={`stage ${isMusicListen ? 'image-scene-stage' : ''}`} ref={stageRef}>
+          {isMusicListen ? (
+            <>
+              <img className="image-scene-background" src="/music.PNG" alt="Lenny écoute de la musique dans un paysage fleuri" />
+              <div className="listening-pixel-layer" aria-hidden="true">
+                <span className="pixel-note note-one" />
+                <span className="pixel-note note-two" />
+                <span className="pixel-note note-three" />
+                <span className="pixel-sparkle sparkle-one" />
+                <span className="pixel-sparkle sparkle-two" />
+              </div>
+              <button
+                className="image-scene-hitbox"
+                type="button"
+                aria-label="Changer d’état"
+                onContextMenu={(event) => event.preventDefault()}
+                onPointerCancel={handlePressCancel}
+                onPointerDown={handlePressStart}
+                onPointerLeave={handlePressCancel}
+                onPointerUp={handlePressEnd}
+                onSelectStart={(event) => event.preventDefault()}
+              />
+              <button
+                className={`listening-head-audio-toggle ${musicMuted ? 'is-muted' : 'is-playing'}`}
+                type="button"
+                aria-label={musicMuted ? 'Activer la musique' : 'Couper la musique'}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onPointerUp={handleListeningAudioClick}
+              />
+            </>
+          ) : isMinecraft ? (
+            <>
+              <img
+                className={`minecraft-photo breathe ${visualReady ? '' : 'is-pending'}`}
+                src="/lenny-minecraft.png"
+                alt="Lenny dans Minecraft sous des cerisiers"
+                onContextMenu={(event) => event.preventDefault()}
+                onPointerCancel={handlePressCancel}
+                onPointerDown={handlePressStart}
+                onPointerLeave={handlePressCancel}
+                onPointerUp={handlePressEnd}
+                onSelectStart={(event) => event.preventDefault()}
+              />
+            </>
+          ) : (
+            <>
+              {mode === 'backrooms' ? (
+                <img aria-hidden="true" className="backrooms-background" src="/backrooms.gif" alt="" />
+              ) : null}
+              <canvas
+                ref={canvasRef}
+                className={`lenny breathe ${visualReady ? '' : 'is-pending'}`}
+                width={CANVAS_WIDTH}
+                height={CANVAS_HEIGHT}
+                role="img"
+                aria-label={visualReady ? `Lenny en mode ${mode}` : 'Lenny se prépare'}
+                onContextMenu={(event) => event.preventDefault()}
+                onPointerCancel={handlePressCancel}
+                onPointerDown={handlePressStart}
+                onPointerLeave={handlePressCancel}
+                onPointerUp={handlePressEnd}
+                onSelectStart={(event) => event.preventDefault()}
+              />
+              {mode === 'music' ? (
+                <button
+                  className="music-keyboard-hotspot"
+                  type="button"
+                  aria-label={musicMuted ? 'Activer la musique' : 'Musique activée'}
+                  onClick={handleMusicKeyboardClick}
+                  onPointerDown={(event) => event.stopPropagation()}
+                />
+              ) : null}
+            </>
+          )}
         </div>
-        <p className="mood" aria-live="polite">
-          {notificationMessage || moodFor(mode)}
-        </p>
+        {!isMusicListen ? (
+          <p className="mood" aria-live="polite">
+            {visualReady ? notificationMessage || reactionMessage || settings.messageOfDay || moodFor(mode) : ''}
+          </p>
+        ) : null}
+        {DEV_CONTROLS_ENABLED && !isMusicListen ? (
+          <label className="dev-state-select">
+            État dev
+            <select value={mode} onChange={handleDevModeChange}>
+              {MODES.map((item) => (
+                <option key={item} value={item}>
+                  {MODE_LABELS[item]}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {pushSupported && !pushEnabled ? (
           <button className="push-button" type="button" onClick={handleEnablePush}>
             Activer les nouvelles de Lenny

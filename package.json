@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:lenny": "node scripts/check-lenny.mjs",
     "preview": "vite preview",
+    "preview:state": "node scripts/preview-state.mjs",
     "icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
